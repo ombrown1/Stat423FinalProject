@@ -1,0 +1,93 @@
+```{r}
+
+setwd("~/Documents/Classes/Stat423")
+df <- read.csv("sleep_cycle_productivity.csv")
+
+df$Gender <- as.factor(df$Gender)
+
+rating_vars <- c("Sleep.Quality", "Productivity.Score", "Mood.Score", "Stress.Level")
+for (var in rating_vars) {
+  new_var <- paste0(var, "Cat")
+  df[[new_var]] <- cut(df[[var]], breaks = c(0, 3, 7, 10),
+                       labels = c("Low", "Medium", "High"), right = TRUE)
+  df[[new_var]] <- as.factor(df[[new_var]])
+}
+
+summary(df)
+
+head(df)
+
+```
+
+```{r}
+
+numeric_vars <- c("Age", "Total.Sleep.Hours", "Exercise..mins.day.", 
+                  "Caffeine.Intake..mg.", "Screen.Time.Before.Bed..mins.", "Work.Hours..hrs.day.")
+df_numeric <- df[, numeric_vars]
+summary(df_numeric)
+
+library(ggplot2)
+library(reshape2)
+df_numeric_long <- melt(df_numeric)
+
+ggplot(df_numeric_long, aes(x = value)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "black") +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal() +
+  ggtitle("Histograms of Numeric Variables")
+
+ggplot(df_numeric_long, aes(x = value)) +
+  geom_density(fill = "lightgreen", alpha = 0.5) +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal() +
+  ggtitle("Density Plots of Numeric Variables")
+
+
+categorical_vars <- c("Gender", "Sleep.QualityCat", "Productivity.ScoreCat", "Mood.ScoreCat", "Stress.LevelCat")
+
+par(mfrow = c(3,2))
+
+for (var in categorical_vars) {
+  print(ggplot(df, aes_string(x = var)) +
+  geom_bar(fill = "coral") +
+  theme_minimal() +
+  ggtitle(paste("Bar Plot for", var)))
+}
+
+```
+
+```{r}
+
+library(corrplot)
+
+numeric_vars <- c("Age", "Total.Sleep.Hours", "Exercise..mins.day.", 
+                  "Caffeine.Intake..mg.", "Screen.Time.Before.Bed..mins.", "Work.Hours..hrs.day.", "Sleep.Quality")
+df_numeric <- df[, numeric_vars]
+
+cor_matrix <- cor(df_numeric, use = "complete.obs")
+corrplot(cor_matrix, method = "color", type = "upper", order = "hclust",
+         tl.col = "black", tl.cex = 0.8)
+
+######
+
+df <- df[, !(names(df) %in% c("Date", "Person_ID", "Sleep.Start.Time", "Sleep.End.Time"))]
+
+
+model_sleep <- lm(Total.Sleep.Hours ~ ., data = df)
+summary(model_sleep)
+
+plot(df$Total.Sleep.Hours, df$Exercise..mins.day.)
+
+model_sleep_reduced <- lm(Total.Sleep.Hours ~ (Productivity.Score + Stress.LevelCat)^2, data = df)
+summary(model_sleep_reduced)
+
+#####
+
+model_work <- lm(Work.Hours..hrs.day. ~ ., data = df)
+summary(model_work)
+
+model_work_reduced <- lm(Work.Hours..hrs.day. ~ (Mood.Score + Productivity.ScoreCat)^2, data = df)
+summary(model_work_reduced)
+
+
+```
