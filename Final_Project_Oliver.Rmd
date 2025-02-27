@@ -66,14 +66,12 @@ for (var in categorical_vars) {
 library(corrplot)
 
 numeric_vars <- c("Age", "Total.Sleep.Hours", "Exercise..mins.day.", 
-                  "Caffeine.Intake..mg.", "Screen.Time.Before.Bed..mins.", "Work.Hours..hrs.day.",
-                  "Sleep.Quality")
+                  "Caffeine.Intake..mg.", "Screen.Time.Before.Bed..mins.", "Work.Hours..hrs.day.")
 
-#df_numeric <- df[, numeric_vars]
+df_numeric <- df[, numeric_vars]
 
 cor_matrix <- cor(df_numeric, use = "complete.obs")
-corrplot(cor_matrix, method = "color", type = "upper", order = "hclust", 
-         tl.col = "black", tl.cex = 0.8)
+corrplot(cor_matrix,  method = "circle")
 
 ```
 
@@ -94,39 +92,88 @@ for (var in rating_vars) {
   df[[new_var]] <- as.factor(df[[new_var]])
 }
 
-df_model <- df[, !(names(df) %in% c("Date", "Person_ID", "Sleep.Start.Time", "Sleep.End.Time",
+df_model <- df[, !(names(df) %in% c("Date", "Person_ID", "Sleep.End.Time",
                                     "Sleep.Quality", "Productivity.Score", "Mood.Score", "Stress.Level"))]
+
+df_model$Exercise..hours.day. <- df_model$Exercise..mins.day./60
 
 library(bestNormalize)
 
 bn_sleep <- bestNormalize(df_model$Total.Sleep.Hours)
-print(bn_sleep$chosen_transform)
+#print(bn_sleep$chosen_transform)
+#paste("Transformation used: ", bn_sleep$chosen_transform)
 df_model$bn_TotalSleep <- predict(bn_sleep)
 
-model_sleep_bn <- lm(bn_TotalSleep ~ (Age + Gender + Exercise..mins.day. +
+bn_work <- bestNormalize(df_model$Work.Hours..hrs.day.)
+#paste("Transformation used: ", bn_work$chosen_transform)
+df_model$bn_WorkHours <- predict(bn_work)
+
+df_model_corr_plot <- df_model[, !(names(df_model) %in% c("Total.Sleep.Hours", "Work.Hours..hrs.day.", "Exercise..mins.day."))]
+
+cor_matrix <- cor(df_model_corr_plot[, sapply(df_model_corr_plot, is.numeric)], use = "complete.obs")
+corrplot(cor_matrix, method = "circle")
+
+```
+
+```{r}
+
+model_sleep_bn <- lm(bn_TotalSleep ~ (Age + Gender + Exercise..hours.day. + Sleep.Start.Time +
                                       Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. +
                                       Work.Hours..hrs.day. + Sleep.QualityCat + Productivity.ScoreCat +
                                       Mood.ScoreCat + Stress.LevelCat)^2, data = df_model)
 
-model_sleep_reduced <- step(model_sleep_bn, direction = "both", trace = 0)
+model_sleep_reduced <- step(model_sleep_bn, direction = "backward", trace = 0)
 summary(model_sleep_reduced)
 par(mfrow = c(2,2))
 plot(model_sleep_reduced)
 
-bn_work <- bestNormalize(df_model$Work.Hours..hrs.day.)
-print(bn_work$chosen_transform)
-df_model$bn_WorkHours <- predict(bn_work)
-
-model_work_bn <- lm(bn_WorkHours ~ (Age + Gender + Exercise..mins.day. +
+model_work_bn <- lm(bn_WorkHours ~ (Age + Gender + Exercise..hours.day. + Sleep.Start.Time +
                                      Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. +
                                      Total.Sleep.Hours + Sleep.QualityCat + Productivity.ScoreCat +
                                      Mood.ScoreCat + Stress.LevelCat)^2,
                     data = df_model)
 
-model_work_reduced <- step(model_work_bn, direction = "both", trace = 0)
+model_work_reduced <- step(model_work_bn, direction = "backward", trace = 0)
 summary(model_work_reduced)
 par(mfrow = c(2,2))
 plot(model_work_reduced)
+
+
+```
+
+```{r}
+
+library(car)
+
+shapiro.test(df_model$bn_TotalSleep)
+ncvTest(model_sleep_reduced)
+
+shapiro.test(df_model$bn_WorkHours)
+ncvTest(model_work_reduced)
+
+```
+
+
+```{r}
+
+model_work_reduced_2 <- lm(formula = bn_WorkHours ~ Age + Exercise..hours.day. + Total.Sleep.Hours + 
+    Sleep.QualityCat, data = df_model)
+
+anova(model_work_reduced_2, model_work_reduced)
+
+summary(model_work_reduced_2)
+
+model_sleep_reduced_2 <- lm(formula = bn_TotalSleep ~ Age + Gender + Exercise..hours.day. + 
+    Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. + Work.Hours..hrs.day. + 
+    Sleep.QualityCat + Productivity.ScoreCat + Mood.ScoreCat + 
+    Stress.LevelCat + Age:Sleep.QualityCat + Gender:Caffeine.Intake..mg. + 
+    Exercise..hours.day.:Caffeine.Intake..mg. + Caffeine.Intake..mg.:Sleep.QualityCat + 
+    Caffeine.Intake..mg.:Mood.ScoreCat + Caffeine.Intake..mg.:Stress.LevelCat + 
+    Screen.Time.Before.Bed..mins.:Sleep.QualityCat + Work.Hours..hrs.day.:Mood.ScoreCat + 
+    Sleep.QualityCat:Mood.ScoreCat + Productivity.ScoreCat:Mood.ScoreCat, 
+    data = df_model)
+
+anova(model_sleep_reduced, model_sleep_reduced_2)
 
 
 ```
