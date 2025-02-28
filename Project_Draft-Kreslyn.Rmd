@@ -1,0 +1,138 @@
+---
+title: "Project 423 - Kreslyn"
+output: pdf_document
+date: "2025-02-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Research Question 2: What sleep-related variables mostly explain the variation in total work hours?
+
+## Research Question 3: Are there any significant interactions between the sleep-related variables?
+
+```{r Basic Correlation Plot}
+library(corrplot)
+library(tidyverse)
+df <- read.csv("sleep_cycle_productivity.csv")
+
+# Basic Correlation Between Variables:
+# pairs(data_filtered, main = "Pairwise Scatter plots of Selected Variables")
+cor_matrix <- cor(df[, sapply(df, is.numeric)])
+corrplot(cor_matrix, method = "circle")
+
+# Numeric variable scatter plot
+
+numeric_vars <- c("Age", "Total.Sleep.Hours", "Exercise..mins.day.", 
+                  "Caffeine.Intake..mg.", "Screen.Time.Before.Bed..mins.", "Work.Hours..hrs.day.")
+
+df_numeric <- df[, numeric_vars]
+pairs(df_numeric, main = "Pairwise Scatter plots of Selected Variables")
+
+```
+
+### Findings: 
+Little to no correlation between variables, except start/end time and total hours no outliers.
+
+```{r Data Cleaning}
+df$Gender <- as.factor(df$Gender)
+rating_vars <- c("Sleep.Quality", "Productivity.Score", "Mood.Score", "Stress.Level")
+for (var in rating_vars) {
+  new_var <- paste0(var, "Cat")
+  df[[new_var]] <- cut(df[[var]], breaks = c(0, 3, 7, 10),
+                       labels = c("Low", "Medium", "High"), right = TRUE)
+  df[[new_var]] <- as.factor(df[[new_var]])
+}
+
+# Getting rid of unneeded columns
+df_filtered <- df %>% 
+  select(-Date) %>%
+  select(-Person_ID) %>% 
+  # These rows have been transformed into factors
+  select(-Stress.Level) %>% 
+  select(-Productivity.Score) %>% 
+  select(-Mood.Score) %>% 
+  select(-Sleep.Quality) %>% 
+# Will have co linearity for start, end and total hours for sleep (end-start = total) 
+# Choosing to omit start time (see chunk for why we chose it...) 
+  select(-Sleep.Start.Time)
+```
+
+```{r End vs Start}
+# Omit based on predictive power (P-value in isolation)
+lm_start =lm(df$Work.Hours..hrs.day. ~ df$Sleep.Start.Time)
+lm_end = lm(df$Work.Hours..hrs.day. ~ df$Sleep.End.Time)
+lm_inter =lm(df$Work.Hours..hrs.day. ~ df$Sleep.Start.Time*df$Sleep.End.Time)
+
+summary(lm_start)
+summary(lm_end)
+summary(lm_inter)
+
+# Omit based on variation
+hist(df$Sleep.Start.Time)
+hist(df$Sleep.End.Time)
+```
+
+# Chose to omit start time
+The distribution of end time is better, the prediction power is about the same 
+
+
+```{r Box Cox transformation}
+library(MASS)
+library(car)
+# response is strictly positive (box cox is appropriate - see notes on yeo-johnson in lecture)
+additive_model <- lm(Work.Hours..hrs.day. ~ ., data = df_filtered)
+bc <- boxcox(additive_model)
+summary(bc)
+
+lambda.hat <- bc$x[which.max(bc$y)]
+
+
+## for transforming the data once you obtain lambda
+df_bc <- df_filtered %>%
+  mutate(Work.Hours..hrs.day. = (Work.Hours..hrs.day.^lambda.hat - 1) / lambda.hat)
+
+additive_bc <- lm(Work.Hours..hrs.day.~ ., data = df_bc)
+summary(additive_bc)
+
+boxCox(additive_model,family="yjPower")
+# To check if the log transformation worked (lambda should now be 0)
+boxCox(additive_bc,family="yjPower")
+# Check for colinearity issues 
+vif(additive_bc)
+```
+
+```{r Interaction Significance}
+# Basic full model
+summary(additive_bc)
+
+full_bc <- lm(Work.Hours..hrs.day. ~ (.)^2, data = df_bc)
+summary(full_bc)
+
+coefs <- summary(full_bc)$coefficients
+vars <- rownames(coefs)[which(coefs[, 4] < 0.1)]
+print("Significant Interactions:")
+vars
+anova(full_bc, additive_bc)
+
+```
+
+### Findings: 
+Using a significance level of 0.05 there are some significant interactions
+Using an anova test the p-value is high....
+
+```{r Polynomial}
+plot(additive_bc)
+```
+## Residuals aren't showing a curved line - would polynomial transformations of the predictors be uneccesary/over fitting?
+
+## Final Thoughts
+No predictors are significant even after transformations, possible explanations include:
+
+The predictors truly have no effect on work hours
+A different model might be better.
+More data may be needed for stronger statistical power.
+
+
+
+
