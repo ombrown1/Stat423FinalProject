@@ -1,0 +1,186 @@
+---
+title: "Project 423 - Kreslyn"
+output: pdf_document
+date: "2025-02-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Research Question 2: What sleep-related variables mostly explain the variation in total work hours?
+
+## Research Question 3: Are there any significant interactions between the sleep-related variables? -> looked at work hour-related avaiables (i.e the predictors where total work hours are the response)
+
+# Basic Correlation plot, can also just use Oliver's instead
+
+```{r Basic Correlation Plot }
+library(corrplot)
+library(tidyverse)
+df <- read.csv("sleep_cycle_productivity.csv")
+
+# Basic Correlation Between Variables:
+# pairs(data_filtered, main = "Pairwise Scatter plots of Selected Variables")
+cor_matrix <- cor(df[, sapply(df, is.numeric)])
+corrplot(cor_matrix, method = "circle")
+
+# Numeric variable scatter plot
+
+numeric_vars <- c("Age", "Total.Sleep.Hours", "Exercise..mins.day.", 
+                  "Caffeine.Intake..mg.", "Screen.Time.Before.Bed..mins.", "Work.Hours..hrs.day.")
+
+df_numeric <- df[, numeric_vars]
+
+# No outliers in the response
+hist(df$Work.Hours..hrs.day.)
+```
+
+### Findings (Expand in report): 
+Little to no correlation between variables, except start/end time and total hours no outliers.
+
+```{r Data Cleaning}
+df$Gender <- as.factor(df$Gender)
+rating_vars <- c("Sleep.Quality", "Productivity.Score", "Mood.Score", "Stress.Level")
+for (var in rating_vars) {
+  new_var <- paste0(var, "Cat")
+  df[[new_var]] <- cut(df[[var]], breaks = c(0, 3, 7, 10),
+                       labels = c("Low", "Medium", "High"), right = TRUE)
+  df[[new_var]] <- as.factor(df[[new_var]])
+}
+
+# Getting rid of unneeded columns
+df_filtered <- df %>% 
+  select(-Date) %>%
+  select(-Person_ID) %>% 
+  # These rows have been transformed into factors
+  select(-Stress.Level) %>% 
+  select(-Productivity.Score) %>% 
+  select(-Mood.Score) %>% 
+  select(-Sleep.Quality) %>% 
+# Will have co linearity for start, end and total hours for sleep (end-start = total) 
+# Choosing to omit start time (see chunk for why we chose it...) 
+  select(-Sleep.Start.Time)
+```
+
+
+
+# How to choose end time or start time since we can't keep both
+
+```{r End vs Start}
+# Omit based on predictive power (P-value in isolation)
+lm_start =lm(df$Work.Hours..hrs.day. ~ df$Sleep.Start.Time)
+lm_end = lm(df$Work.Hours..hrs.day. ~ df$Sleep.End.Time)
+lm_inter =lm(df$Work.Hours..hrs.day. ~ df$Sleep.Start.Time*df$Sleep.End.Time)
+
+summary(lm_start)
+summary(lm_end)
+summary(lm_inter)
+
+# Omit based on variation
+hist(df$Sleep.Start.Time)
+hist(df$Sleep.End.Time)
+```
+
+# Chose to omit start time
+The distribution of end time is better, the prediction power is about the same 
+
+
+# Beginning of Total Work Hours Model
+```{r Box Cox transformation}
+library(MASS)
+library(car)
+
+additive_model <- lm(Work.Hours..hrs.day. ~ ., data = df_filtered)
+# basic variable only model 
+summary(additive_model)
+
+# residual plot
+plot(additive_model)
+
+# Transform the response for better results:
+# response is strictly positive (box cox is appropriate - see notes on yeo-johnson in lecture)
+# Box cox is theoretically used when we don't know what transformation is the most appropriate
+bc <- boxcox(additive_model)
+summary(bc)
+
+# Find lambda
+lambda.hat <- bc$x[which.max(bc$y)]
+
+## for transforming the data once you obtain lambda
+df_bc <- df_filtered %>%
+  mutate(Work.Hours..hrs.day. = (Work.Hours..hrs.day.^lambda.hat - 1) / lambda.hat)
+
+# Basic model after box cox transformation
+additive_bc <- lm(Work.Hours..hrs.day.~ ., data = df_bc)
+summary(additive_bc)
+plot(additive_bc)
+
+# Checking to see if lambda is now closewr to 0 
+boxCox(additive_model,family="yjPower")
+# To check if the log transformation worked (lambda should now be 0)
+boxCox(additive_bc,family="yjPower")
+# Check for colinearity issues 
+vif(additive_bc)
+
+```
+## Findings: The R^2 actually got worse, do not move forward with the box cox transformed response
+
+
+
+
+
+# Check for interactions in the model
+```{r Interaction Significance For WORK HOURS (NOT SLEEP HOURS)}
+# Basic full model
+summary(additive_model)
+
+full_model <- lm(Work.Hours..hrs.day. ~ (.)^2, data = df_filtered)
+summary(full_model)
+
+coefs <- summary(full_model)$coefficients
+vars <- rownames(coefs)[which(coefs[, 4] < 0.05)]
+print("Significant Interactions:")
+vars
+anova(full_model, additive_model)
+
+```
+
+### Findings: 
+Using a significance level of 0.05 there are some significant interactions
+Using an anova test the p-value is high....
+
+```{r Assumptions}
+plot(additive_model)
+plot(full_model)
+```
+## Residuals aren't showing a curved line - polynomial transformations of the predictors would be uneccesary/over fitting.
+
+# Last attempt at model selection to test for significant predictors
+
+```{r Stepwise Selection}
+
+## Need to pick BIC or AIC (For BIC: k = log(nrow(df_bc))) before trace)
+# Using AIC, since the slides state it to be more accurate than BIC (also, overfitting is not a concern)
+stepwise_model <- stepAIC(full_model, direction = "both", trace = FALSE)
+
+# Display the summary of the selected model
+summary(stepwise_model)
+```
+
+```{r}
+plot(stepwise_model)
+anova(full_model, stepwise_model)
+anova(additive_model, stepwise_model)
+```
+LOOCV not useful (5,000 folds), k-fold cross validation - not useful since the response data is uniform and each fold will likely look the same
+
+
+## Final Thoughts
+No predictors are significant when looking at the anova tests, some predictors in the full model are significant
+
+The predictors truly have no effect on work hours
+A different model might be better.
+More data may be needed for stronger statistical power.
+
+
+
+
