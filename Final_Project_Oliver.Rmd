@@ -26,14 +26,14 @@ head(df)
 
 ```{r}
 
+library(ggplot2)
+library(reshape2)
+
 numeric_vars <- c("Age", "Total.Sleep.Hours", "Exercise..mins.day.", 
                   "Caffeine.Intake..mg.", "Screen.Time.Before.Bed..mins.", "Work.Hours..hrs.day.")
 
 df_numeric <- df[, numeric_vars]
-summary(df_numeric)
 
-library(ggplot2)
-library(reshape2)
 df_numeric_long <- melt(df_numeric)
 
 ggplot(df_numeric_long, aes(x = value)) +
@@ -42,15 +42,15 @@ ggplot(df_numeric_long, aes(x = value)) +
   theme_minimal() +
   ggtitle("Histograms of Numeric Variables")
 
-ggplot(df_numeric_long, aes(x = value)) +
-  geom_density(fill = "lightgreen", alpha = 0.5) +
-  facet_wrap(~ variable, scales = "free") +
-  theme_minimal() +
-  ggtitle("Density Plots of Numeric Variables")
+#ggplot(df_numeric_long, aes(x = value)) +
+  #geom_density(fill = "lightgreen", alpha = 0.5) +
+  #facet_wrap(~ variable, scales = "free") +
+  #theme_minimal() +
+  #ggtitle("Density Plots of Numeric Variables")
 
 categorical_vars <- c("Gender", "Sleep.QualityCat", "Productivity.ScoreCat", "Mood.ScoreCat", "Stress.LevelCat")
 
-par(mfrow = c(3,2))
+par(mfrow = c(2,4))
 
 for (var in categorical_vars) {
   print(ggplot(df, aes_string(x = var)) +
@@ -117,26 +117,111 @@ corrplot(cor_matrix, method = "circle")
 
 ```{r}
 
-model_sleep_bn <- lm(bn_TotalSleep ~ (Age + Gender + Exercise..hours.day. + Sleep.Start.Time +
+model_sleep_full <- lm(bn_TotalSleep ~ (Age + Gender + Exercise..hours.day. + Sleep.Start.Time +
                                       Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. +
                                       Work.Hours..hrs.day. + Sleep.QualityCat + Productivity.ScoreCat +
                                       Mood.ScoreCat + Stress.LevelCat)^2, data = df_model)
 
-model_sleep_reduced <- step(model_sleep_bn, direction = "backward", trace = 0)
+model_sleep_reduced <- step(model_sleep_full, direction = "backward", trace = 0)
 summary(model_sleep_reduced)
-par(mfrow = c(2,2))
-plot(model_sleep_reduced)
 
-model_work_bn <- lm(bn_WorkHours ~ (Age + Gender + Exercise..hours.day. + Sleep.Start.Time +
+model_work_full <- lm(bn_WorkHours ~ (Age + Gender + Exercise..hours.day. + Sleep.Start.Time +
                                      Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. +
                                      Total.Sleep.Hours + Sleep.QualityCat + Productivity.ScoreCat +
                                      Mood.ScoreCat + Stress.LevelCat)^2,
                     data = df_model)
 
-model_work_reduced <- step(model_work_bn, direction = "backward", trace = 0)
+model_work_reduced <- step(model_work_full, direction = "backward", trace = 0)
 summary(model_work_reduced)
-par(mfrow = c(2,2))
-plot(model_work_reduced)
+
+
+```
+
+
+```{r}
+
+remove_terms <- function(model, terms, threshold = 0.05) {
+  current_model <- model
+  for (term in terms) {
+    current_terms <- attr(terms(current_model), "term.labels")
+    if (!(term %in% current_terms)) {
+      next
+    }
+    updated_model <- update(current_model, as.formula(paste(". ~ . -", term)))
+    
+    anova_result <- anova(updated_model, current_model)
+    p_val <- anova_result[["Pr(>F)"]][2]
+    
+    if (is.na(p_val)) {
+      next
+    }
+    
+    # Since we are removing terms, we want a high p-value, which suggests removing the feature does not 
+    # Significantly effect the model.
+    if (p_val > threshold) {
+      cat("Removing", term, "\n")
+      current_model <- updated_model
+      
+      # HEre if a base feature is removed, interactions containing that feature, will be removed
+      if (!grepl(":", term)) {
+        current_terms <- attr(terms(current_model), "term.labels")
+        interactions_to_remove <- current_terms[grepl(term, current_terms) & grepl(":", current_terms)]
+        if (length(interactions_to_remove) > 0) {
+          removal_formula <- paste(interactions_to_remove, collapse = " - ")
+          current_model <- update(current_model, as.formula(paste(". ~ . -", removal_formula)))
+        }
+      }
+    }
+  }
+  return(current_model)
+}
+
+terms_to_remove <- c("Sleep.Start.Time",
+                     "Mood.ScoreCatHigh", 
+                     "Screen.Time.Before.Bed..mins.", 
+                     "Age:Sleep.QualityCatMedium",
+                     "Sleep.QualityCat:Mood.ScoreCat",
+                     "Productivity.ScoreCat:Mood.ScoreCat",
+                     "Sleep.QualityCat",
+                     "Stress.LevelCat",
+                     "Gender",
+                     "Age",
+                     "Exercise..hours.day.",
+                     "Screen.Time.Before.Bed..mins.",
+                     "Work.Hours..hrs.day.",
+                     "Stress.LevelCat",
+                     "Work.Hours..hrs.day.:Mood.ScoreCat",
+                     "Productivity.ScoreCat",
+                     "Caffeine.Intake..mg.:Stress.LevelCat",
+                     "Caffeine.Intake..mg.:Mood.ScoreCat",
+                     "Stress.LevelCat",
+                     "Work.Hours..hrs.day.",
+                     "Caffeine.Intake..mg.",
+                     "Mood.ScoreCat",
+                     "Stress.LevelCat")
+
+model_sleep_final <- remove_terms(model_sleep_reduced, terms_to_remove, threshold = 0.05)
+summary(model_sleep_final)
+
+
+```
+
+```{r}
+
+terms_to_remove <- c("Sleep.Start.Time", 
+                     "Mood.ScoreCatHigh", 
+                     "Screen.Time.Before.Bed..mins.", 
+                     "Age:Sleep.QualityCatMedium", 
+                     "Mood.ScoreCat", 
+                     "Age:Mood.ScoreCat", 
+                     "Sleep.QualityCat:Mood.ScoreCat",
+                     "Mood.ScoreCat",
+                     "Sleep.QualityCat",
+                     "Total.Sleep.Hours")
+
+model_work_final <- remove_terms(model_work_reduced, terms_to_remove, threshold = 0.05)
+summary(model_work_final)
+
 
 
 ```
@@ -145,35 +230,20 @@ plot(model_work_reduced)
 
 library(car)
 
-shapiro.test(df_model$bn_TotalSleep)
-ncvTest(model_sleep_reduced)
+par(mfrow = c(2,2))
+plot(model_sleep_final) 
 
-shapiro.test(df_model$bn_WorkHours)
-ncvTest(model_work_reduced)
+print(shapiro.test(residuals(model_sleep_final)))
+print(ncvTest(model_sleep_final))
+print(vif(model_sleep_final))
 
-```
+par(mfrow = c(2,2))
+plot(model_work_final)
 
-
-```{r}
-
-model_work_reduced_2 <- lm(formula = bn_WorkHours ~ Age + Exercise..hours.day. + Total.Sleep.Hours + 
-    Sleep.QualityCat, data = df_model)
-
-anova(model_work_reduced_2, model_work_reduced)
-
-summary(model_work_reduced_2)
-
-model_sleep_reduced_2 <- lm(formula = bn_TotalSleep ~ Age + Gender + Exercise..hours.day. + 
-    Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. + Work.Hours..hrs.day. + 
-    Sleep.QualityCat + Productivity.ScoreCat + Mood.ScoreCat + 
-    Stress.LevelCat + Age:Sleep.QualityCat + Gender:Caffeine.Intake..mg. + 
-    Exercise..hours.day.:Caffeine.Intake..mg. + Caffeine.Intake..mg.:Sleep.QualityCat + 
-    Caffeine.Intake..mg.:Mood.ScoreCat + Caffeine.Intake..mg.:Stress.LevelCat + 
-    Screen.Time.Before.Bed..mins.:Sleep.QualityCat + Work.Hours..hrs.day.:Mood.ScoreCat + 
-    Sleep.QualityCat:Mood.ScoreCat + Productivity.ScoreCat:Mood.ScoreCat, 
-    data = df_model)
-
-anova(model_sleep_reduced, model_sleep_reduced_2)
-
+print(shapiro.test(residuals(model_work_final)))
+print(ncvTest(model_work_final))
+print(vif(model_work_final))
 
 ```
+
+
