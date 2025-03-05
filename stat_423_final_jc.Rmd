@@ -1,0 +1,105 @@
+---
+title: "Stat 423 Final Project"
+author: "Josie Czeskleba"
+date: "2025-02-27"
+output: pdf_document
+---
+
+# Setup
+```{r}
+library(tidyverse)
+library(corrplot)
+library(bestNormalize)
+```
+
+
+
+# Read and Preprocess Data
+```{r read data}
+
+sleep <- read.csv("sleep_cycle_productivity.csv")
+
+sleep$Gender <- as.factor(sleep$Gender)
+
+rating_vars <- c("Sleep.Quality", "Productivity.Score", "Mood.Score", "Stress.Level")
+
+for (var in rating_vars) {
+  new_var <- paste0(var, "Cat")
+  sleep[[new_var]] <- cut(sleep[[var]], breaks = c(0, 3, 7, 10),
+                       labels = c("Low", "Medium", "High"), right = TRUE)
+  sleep[[new_var]] <- as.factor(sleep[[new_var]])
+}
+
+
+head(sleep)
+```
+
+# Exploratory Data Analysis
+```{r eda}
+hist(sleep$Total.Sleep.Hours, main = "Histogram of Total Sleep Hours")
+plot(sleep$Caffeine.Intake..mg., sleep$Total.Sleep.Hours, main = "Total Sleep Hours vs Caffeine Intake")
+plot(sleep$Screen.Time.Before.Bed..mins., sleep$Total.Sleep.Hours, main = "Total Sleep Hours vs Screen Time")
+plot(sleep$Work.Hours..hrs.day., sleep$Total.Sleep.Hours, main = "Total Sleep Hours vs Total Work Hours")
+```
+
+# Model Building
+
+## Simple Models
+```{r simple models}
+model1 <- lm(Total.Sleep.Hours ~ Age + Gender + Exercise..mins.day. + Caffeine.Intake..mg. +
+               Screen.Time.Before.Bed..mins. + Work.Hours..hrs.day. + Sleep.QualityCat + 
+               Productivity.ScoreCat + Mood.ScoreCat + Stress.LevelCat, data = sleep)
+model2 <- lm(Work.Hours..hrs.day. ~ Age + Gender + Exercise..mins.day. + Caffeine.Intake..mg. +
+               Screen.Time.Before.Bed..mins. + Total.Sleep.Hours + Sleep.QualityCat + Productivity.ScoreCat +
+               Mood.ScoreCat + Stress.LevelCat, data = sleep)
+summary(model1)
+summary(model2)
+
+
+# Plot Residuals 
+par(mfrow = c(2,2))
+
+plot(fitted(model1), residuals(model1), 
+     main = " Model 1 Residuals vs Fitted", 
+     xlab = "Fitted Values", 
+     ylab = "Residuals") 
+abline(h = 0, col = 'red')
+qqnorm(residuals(model1), main = "QQplot for Model 1")
+qqline(residuals(model1), col = 'red')
+
+plot(fitted(model2), residuals(model2), 
+     main = "Model 2 Residuals vs Fitted", 
+     xlab = "Fitted Values", 
+     ylab = "Residuals") 
+abline(h = 0, col = 'red')
+qqnorm(residuals(model2), main = "QQplot for Model 2")
+qqline(residuals(model2), col = 'red')
+```
+There is a strong S shape visible in both QQ Plots. This implies that the data deviates significantly from the assumed normal distributed. 
+
+## Box Cox Method
+Since it is unclear what relationship is present in our data we will use the Box Cox method to select the best transformation. 
+```{r boxcox}
+bc_sleep <- boxcox(sleep$Total.Sleep.Hours)
+print(bc_sleep)
+sleep$normalized_sleep <- predict(bc_sleep)
+
+bc_work_hours <- boxcox(sleep$Work.Hours..hrs.day.)
+print(bc_work_hours)
+sleep$normalized_work_hours <- predict(bc_work_hours)
+```
+## Two-way Interaction Model
+```{r two way model}
+model3 <- lm(normalized_sleep ~ (Age + Gender + Exercise..mins.day. + Caffeine.Intake..mg. +
+               Screen.Time.Before.Bed..mins. + Work.Hours..hrs.day. + Sleep.QualityCat + 
+               Productivity.ScoreCat + Mood.ScoreCat + Stress.LevelCat)^2, data = sleep)
+model4 <- lm(normalized_work_hours ~ (Age + Gender + Exercise..mins.day. +
+                                     Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. +
+                                     Total.Sleep.Hours + Sleep.QualityCat + Productivity.ScoreCat +
+                                     Mood.ScoreCat + Stress.LevelCat)^2, data = sleep)
+
+summary(model3)
+summary(model4)
+```
+
+
