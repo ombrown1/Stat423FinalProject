@@ -1,0 +1,31 @@
+---
+title: "423 Project"
+author: "Katherine Fulton"
+format: html
+editor: visual
+---
+
+```{r}
+library(dplyr)
+sleep <- read.csv("sleep_cycle_productivity.csv")
+
+sleep %>%
+  select(-Person_ID, -Date, -Sleep.Start.Time, -Sleep.End.Time, -Gender) %>%
+  summary()
+```
+```{r}
+library(corrplot)
+
+# Select only numeric columns
+numeric_data <- sleep %>%
+  select(-Person_ID, -Date, -Gender) %>%
+  mutate_if(is.character, as.numeric)  # Convert categorical variables if necessary
+
+# Compute the correlation matrix
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# Plot the correlation matrix
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+```
+
