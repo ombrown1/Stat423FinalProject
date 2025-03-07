@@ -5,6 +5,8 @@ output:
 ---
 ```{r}
 
+library(car)
+
 setwd("~/Documents/Classes/Stat423")
 df <- read.csv("sleep_cycle_productivity.csv")
 
@@ -73,6 +75,17 @@ df_numeric <- df[, numeric_vars]
 cor_matrix <- cor(df_numeric, use = "complete.obs")
 corrplot(cor_matrix,  method = "circle")
 
+df_multicollinearity_check <- df[, !(names(df) %in% c("Date", "Person_ID", "Sleep.End.Time",
+                                    "Sleep.Quality", "Productivity.Score", "Mood.Score", "Stress.Level"))]
+
+colnames(df_multicollinearity_check)
+
+print(vif(lm(data = df_multicollinearity_check, Total.Sleep.Hours ~ .)))
+
+print(vif(lm(data = df_multicollinearity_check, Work.Hours..hrs.day. ~ .)))
+
+
+
 ```
 
 
@@ -96,6 +109,20 @@ df_model <- df[, !(names(df) %in% c("Date", "Person_ID", "Sleep.End.Time",
                                     "Sleep.Quality", "Productivity.Score", "Mood.Score", "Stress.Level"))]
 
 df_model$Exercise..hours.day. <- df_model$Exercise..mins.day./60
+
+model_sleep_non_normalized <- lm(data = df_model, Total.Sleep.Hours ~ (Age + Gender + Exercise..hours.day. +
+                                                                         Sleep.Start.Time +
+                                      Caffeine.Intake..mg. + Screen.Time.Before.Bed..mins. +
+                                      Work.Hours..hrs.day. + Sleep.QualityCat + Productivity.ScoreCat +
+                                      Mood.ScoreCat + Stress.LevelCat)^2)
+
+model_work_non_normalized <- lm(data = df_model, Work.Hours..hrs.day. ~ (Age + Gender + Exercise..hours.day. +
+                                                                          Sleep.Start.Time +
+                                                                          Caffeine.Intake..mg. + 
+                                                                          Screen.Time.Before.Bed..mins. +
+                                                                          Total.Sleep.Hours + Sleep.QualityCat + 
+                                                                          Productivity.ScoreCat +
+                                                                          Mood.ScoreCat + Stress.LevelCat)^2)
 
 library(bestNormalize)
 
@@ -122,7 +149,7 @@ model_sleep_full <- lm(bn_TotalSleep ~ (Age + Gender + Exercise..hours.day. + Sl
                                       Work.Hours..hrs.day. + Sleep.QualityCat + Productivity.ScoreCat +
                                       Mood.ScoreCat + Stress.LevelCat)^2, data = df_model)
 
-model_sleep_reduced <- step(model_sleep_full, direction = "backward", trace = 0)
+model_sleep_reduced <- step(model_sleep_full, direction = "both", trace = 0)
 summary(model_sleep_reduced)
 
 model_work_full <- lm(bn_WorkHours ~ (Age + Gender + Exercise..hours.day. + Sleep.Start.Time +
@@ -131,12 +158,11 @@ model_work_full <- lm(bn_WorkHours ~ (Age + Gender + Exercise..hours.day. + Slee
                                      Mood.ScoreCat + Stress.LevelCat)^2,
                     data = df_model)
 
-model_work_reduced <- step(model_work_full, direction = "backward", trace = 0)
+model_work_reduced <- step(model_work_full, direction = "both", trace = 0)
 summary(model_work_reduced)
 
 
 ```
-
 
 ```{r}
 
@@ -176,33 +202,13 @@ remove_terms <- function(model, terms, threshold = 0.05) {
   return(current_model)
 }
 
-terms_to_remove <- c("Sleep.Start.Time",
-                     "Mood.ScoreCatHigh", 
-                     "Screen.Time.Before.Bed..mins.", 
-                     "Age:Sleep.QualityCatMedium",
-                     "Sleep.QualityCat:Mood.ScoreCat",
-                     "Productivity.ScoreCat:Mood.ScoreCat",
-                     "Sleep.QualityCat",
-                     "Stress.LevelCat",
-                     "Gender",
-                     "Age",
-                     "Exercise..hours.day.",
-                     "Screen.Time.Before.Bed..mins.",
-                     "Work.Hours..hrs.day.",
-                     "Stress.LevelCat",
-                     "Work.Hours..hrs.day.:Mood.ScoreCat",
-                     "Productivity.ScoreCat",
-                     "Caffeine.Intake..mg.:Stress.LevelCat",
-                     "Caffeine.Intake..mg.:Mood.ScoreCat",
-                     "Stress.LevelCat",
-                     "Work.Hours..hrs.day.",
-                     "Caffeine.Intake..mg.",
-                     "Mood.ScoreCat",
-                     "Stress.LevelCat")
+########
+
+terms_to_remove <- c()
 
 model_sleep_final <- remove_terms(model_sleep_reduced, terms_to_remove, threshold = 0.05)
-summary(model_sleep_final)
 
+summary(model_sleep_final)
 
 ```
 
@@ -221,7 +227,6 @@ terms_to_remove <- c("Sleep.Start.Time",
 
 model_work_final <- remove_terms(model_work_reduced, terms_to_remove, threshold = 0.05)
 summary(model_work_final)
-
 
 
 ```
@@ -246,4 +251,93 @@ print(vif(model_work_final))
 
 ```
 
+```{r}
 
+set.seed(123)
+n <- nrow(df_model)
+train_idx <- sample(seq_len(n), size = floor(0.8 * n))
+train_data <- df_model[train_idx, ]
+test_data  <- df_model[-train_idx, ]
+
+model_sleep_train <- lm(formula(model_sleep_final), data = train_data)
+model_work_train  <- lm(formula(model_work_final), data = train_data)
+
+pred_sleep <- predict(model_sleep_train, newdata = test_data)
+pred_work  <- predict(model_work_train, newdata = test_data)
+
+actual_sleep <- test_data$bn_TotalSleep
+MSE_sleep <- mean((actual_sleep - pred_sleep)^2)
+RMSE_sleep <- sqrt(MSE_sleep)
+R2_sleep <- cor(actual_sleep, pred_sleep)^2
+
+actual_work <- test_data$bn_WorkHours
+MSE_work <- mean((actual_work - pred_work)^2)
+RMSE_work <- sqrt(MSE_work)
+R2_work <- cor(actual_work, pred_work)^2
+
+cat("bn_TotalSleep Model Performance:\n")
+cat("RMSE:", RMSE_sleep, "\n")
+cat("R-squared:", R2_sleep, "\n\n")
+
+cat("bn_WorkHours Model Performance:\n")
+cat("RMSE:", RMSE_work, "\n")
+cat("R-squared:", R2_work, "\n")
+
+
+```
+
+```{r}
+
+#model_work_non_normalized
+
+#model_work_full
+
+#model_work_reduced
+
+# terms_to_remove <- c("Sleep.Start.Time", 
+#                      "Mood.ScoreCatHigh", 
+#                      "Screen.Time.Before.Bed..mins.", 
+#                      "Age:Sleep.QualityCatMedium", 
+#                      "Mood.ScoreCat", 
+#                      "Age:Mood.ScoreCat", 
+#                      "Sleep.QualityCat:Mood.ScoreCat",
+#                      "Mood.ScoreCat",
+#                      "Sleep.QualityCat",
+#                      "Total.Sleep.Hours")
+
+#model_work_final <- remove_terms(model_work_reduced, terms_to_remove, threshold = 0.05)
+
+#model_sleep_non_normalized
+
+#model_sleep_full
+
+#model_sleep_reduced
+
+(model_sleep_final <- lm(data = df_model, bn_TotalSleep ~ Caffeine.Intake..mg. + Work.Hours..hrs.day. + (Sleep.QualityCat + Mood.ScoreCat)^2))
+
+summary(model_sleep_final)
+
+```
+```{r}
+
+model_sleep_final <- lm(data = df_model, bn_TotalSleep ~ Caffeine.Intake..mg. + Work.Hours..hrs.day. + (Sleep.QualityCat + Mood.ScoreCat)^2)
+
+model_work_final <- lm(data = df_model, bn_WorkHours ~ Age * Exercise..hours.day.)
+
+library(car)
+
+par(mfrow = c(2,2))
+plot(model_sleep_final) 
+
+print(shapiro.test(residuals(model_sleep_final)))
+print(ncvTest(model_sleep_final))
+print(vif(model_sleep_final))
+
+par(mfrow = c(2,2))
+plot(model_work_final)
+
+print(shapiro.test(residuals(model_work_final)))
+print(ncvTest(model_work_final))
+print(vif(model_work_final))
+
+```
