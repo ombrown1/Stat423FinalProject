@@ -1,0 +1,92 @@
+---
+title: "423 Project"
+author: "Katherine Fulton"
+format: html
+editor: visual
+---
+
+```{r}
+library(dplyr)
+sleep <- read.csv("sleep_cycle_productivity.csv")
+
+sleep %>%
+  select(-Person_ID, -Date, -Sleep.Start.Time, -Sleep.End.Time, -Gender) %>%
+  summary()
+```
+```{r}
+# Check for missing values in each column
+colSums(is.na(sleep))
+```
+
+```{r}
+library(corrplot)
+
+# Select only numeric columns
+numeric_data <- sleep %>%
+  select(-Person_ID, -Date, -Gender) %>%
+  mutate_if(is.character, as.numeric)  # Convert categorical variables if necessary
+
+# Compute the correlation matrix
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# Plot the correlation matrix
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+```
+```{r}
+boxplot(sleep[, !(names(sleep) %in% c("Person_ID", "Date", "Sleep.Start.Time", "Sleep.End.Time", "Gender"))],
+        main = "Boxplot of Sleep and Productivity Variables",
+        las = 2, # Rotate x-axis labels for readability
+        col = "lightblue")
+
+
+boxplot(sleep$Total.Sleep.Hours, main = "Total Sleep Hours", col = "lightblue")
+boxplot(sleep$Productivity.Score, main = "Productivity Score", col = "lightgreen")
+boxplot(sleep$Caffeine.Intake..mg., main = "Caffeine Intake mg", col = "lightpink")
+boxplot(sleep$Sleep.Quality, main = "Sleep Quality", col = "violet")
+boxplot(sleep$Exercise..mins.day., main = "Exercise Minutes per day", col = "orange")
+
+```
+
+```{r}
+
+# Load necessary library
+library(dplyr)
+
+# Load data
+sleep <- read.csv("sleep_cycle_productivity.csv")
+
+# Define numeric columns to plot
+num_cols <- sleep %>%
+  select(-Person_ID, -Sleep.Start.Time, -Sleep.End.Time, -Date, -Gender)
+
+# Set layout to display multiple boxplots (2 rows, 2 columns)
+par(mfrow = c(2, 5), mar = c(5, 4, 2, 1)) # Adjust columns based on the number of variables
+
+# Generate boxplots for each numeric column
+for (col in names(num_cols)) {
+  boxplot(num_cols[[col]], main = col, col = "lightpink")
+}
+
+```
+
+```{r}
+par(mfrow = c(1,2))
+# Histogram with density curve
+hist(sleep$Total.Sleep.Hours, breaks = 20, col = "lightblue", main = "Distribution of Total Sleep Hours",
+     xlab = "Total Sleep Hours", probability = TRUE)
+lines(density(sleep$Total.Sleep.Hours, na.rm = TRUE), col = "red", lwd = 2)
+
+qqnorm(sleep$Total.Sleep.Hours, main = "Q-Q Plot of Total Sleep Hours")
+qqline(sleep$Total.Sleep.Hours, col = "red", lwd = 2)
+
+
+# Example model: Predicting Total Sleep Hours using Sleep Quality and other predictors
+model <- lm(Total.Sleep.Hours ~ Sleep.Quality + Exercise..mins.day. + Caffeine.Intake..mg. + 
+            Screen.Time.Before.Bed..mins. + Work.Hours..hrs.day. + Productivity.Score, data = sleep)
+
+# Residual diagnostics
+par(mfrow = c(2, 2))  # Arrange plots in 2x2 grid
+plot(model)
+```
+
