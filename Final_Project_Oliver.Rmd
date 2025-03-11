@@ -161,7 +161,6 @@ model_work_full <- lm(bn_WorkHours ~ (Age + Gender + Exercise..hours.day. + Slee
 model_work_reduced <- step(model_work_full, direction = "both", trace = 0)
 summary(model_work_reduced)
 
-
 ```
 
 ```{r}
@@ -329,15 +328,41 @@ library(car)
 par(mfrow = c(2,2))
 plot(model_sleep_final) 
 
+par(mfrow = c(1,2))
+plot(model_sleep_final, which = 1)
+plot(model_sleep_final, which = 2)
+
 print(shapiro.test(residuals(model_sleep_final)))
 print(ncvTest(model_sleep_final))
 print(vif(model_sleep_final))
 
-par(mfrow = c(2,2))
-plot(model_work_final)
+par(mfrow = c(1,2))
+plot(model_work_final, which = 1)
+plot(model_work_final, which = 2)
 
 print(shapiro.test(residuals(model_work_final)))
 print(ncvTest(model_work_final))
 print(vif(model_work_final))
+
+```
+
+```{r}
+
+
+anova(model_sleep_reduced, model_sleep_full)
+
+cat("\n")
+
+anova(model_sleep_final, model_sleep_reduced)
+
+cat("\n")
+
+anova(model_work_reduced, model_work_full)
+
+cat("\n")
+
+anova(model_work_final, model_work_reduced)
+
+
 
 ```
